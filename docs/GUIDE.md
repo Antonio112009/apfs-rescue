@@ -226,12 +226,17 @@ that needs attention:
 | `ERROR` | Could not be copied; the reason is in the last column. |
 | `RENAMED` | The name is not allowed on this system (Windows), so it was changed. |
 | `SKIPPED` | Already copied by an earlier run. |
+| `NOTE` | Copied, but an attribute or date could not be restored (details in the last column). |
 
 **Interrupted?** Run the same command again. Files that are already complete
 are skipped.
 
-Modification dates and (on Mac and Linux) permissions are kept. Creation
-dates, Finder tags and other extended attributes are not copied yet.
+Modification dates and (on Mac and Linux) permissions are kept. When you copy
+on a Mac, creation dates, Finder tags and colours, comments, resource forks and
+other extended attributes are kept as well (`--no-xattrs` turns attributes
+off). Windows and Linux have no place for these Mac attributes. The "downloaded
+from the internet" mark is deliberately not copied. Anything that could not be
+restored is listed in the report as `NOTE`.
 
 ## 7. Check the copy
 

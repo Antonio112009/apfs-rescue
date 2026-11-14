@@ -72,6 +72,7 @@ dependencies = [
  "clap",
  "filetime",
  "flate2",
+ "libc",
  "lzfse_rust",
  "rayon",
  "unicode-normalization",

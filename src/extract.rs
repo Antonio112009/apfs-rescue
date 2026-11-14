@@ -133,7 +133,59 @@ pub struct Summary {
     pub repaired_blocks: u64,
 }
 
-pub fn extract(fs: &Fs, start: u64, out: &Path, threads: usize) -> Result<Summary> {
+pub struct CopyOptions {
+    pub threads: usize,
+    /// Restore extended attributes (Finder tags, comments...). macOS only.
+    pub xattrs: bool,
+}
+
+/// Attributes that describe how APFS stores the file, or that would get in
+/// the way on the copy, are not restored.
+fn restore_xattr(name: &str, compressed: bool) -> bool {
+    match name {
+        "com.apple.decmpfs" | "com.apple.quarantine" => false,
+        "com.apple.ResourceFork" => !compressed, // holds the compressed data
+        n => !n.starts_with("com.apple.fs.") && !n.starts_with("com.apple.system."),
+    }
+}
+
+/// Restores extended attributes on `path`; problems become report notes.
+fn restore_xattrs(fs: &Fs, ino: &Inode, path: &Path, notes: &mut Vec<String>) {
+    let list = match fs.xattrs(ino.id) {
+        Ok(l) => l,
+        Err(e) => return notes.push(format!("attributes: {e:#}")),
+    };
+    for x in list.iter().filter(|x| restore_xattr(&x.name, ino.is_compressed())) {
+        let mut rep = ReadReport::default();
+        match fs.xattr_bytes(x, &mut rep) {
+            Ok(v) => {
+                if !rep.bad.is_empty() {
+                    notes.push(format!("attribute {} is partly unreadable", x.name));
+                }
+                if let Err(e) = platform::set_xattr(path, &x.name, &v) {
+                    notes.push(format!("attribute {}: {e}", x.name));
+                }
+            }
+            Err(e) => notes.push(format!("attribute {}: {e:#}", x.name)),
+        }
+    }
+}
+
+/// Modification/access time everywhere, creation time on macOS.
+fn restore_times(ino: &Inode, path: &Path, notes: &mut Vec<String>) -> std::io::Result<()> {
+    filetime::set_file_times(path, ns_to_filetime(ino.access_time), ns_to_filetime(ino.mod_time))?;
+    if platform::MAC_METADATA
+        && ino.create_time != 0
+        && let Err(e) = platform::set_creation_time(path, ino.create_time)
+    {
+        notes.push(format!("creation date: {e}"));
+    }
+    Ok(())
+}
+
+pub fn extract(fs: &Fs, start: u64, out: &Path, opts: &CopyOptions) -> Result<Summary> {
+    let threads = opts.threads;
+    let xattrs = opts.xattrs && platform::MAC_METADATA;
     fs::create_dir_all(out)?;
     let report_path = out.join("_apfs-rescue-report.tsv");
     eprintln!("Listing files...");
@@ -205,14 +257,17 @@ pub fn extract(fs: &Fs, start: u64, out: &Path, threads: usize) -> Result<Summar
             use rayon::prelude::*;
             w.files.par_iter().for_each(|job| {
                 let dst = out.join(&job.rel);
-                let res = copy_file(fs, &job.ino, &dst);
+                let res = copy_file(fs, &job.ino, &dst, xattrs);
                 let mut sm = sum.lock().unwrap();
                 match res {
                     Ok(CopyResult::Skipped) => {
                         sm.skipped += 1;
                         log("SKIPPED", &job.rel, job.ino.size, "already copied");
                     }
-                    Ok(CopyResult::Copied(n, rep)) => {
+                    Ok(CopyResult::Copied(n, rep, notes)) => {
+                        if !notes.is_empty() {
+                            log("NOTE", &job.rel, n, &notes.join("; "));
+                        }
                         sm.bytes += n;
                         sm.repaired_blocks += rep.repaired_blocks;
                         if rep.bad.is_empty() {
@@ -248,10 +303,19 @@ pub fn extract(fs: &Fs, start: u64, out: &Path, threads: usize) -> Result<Summar
         finished.store(true, Ordering::Relaxed);
     });
 
-    // Directory times last, deepest first, so file writes don't change them.
+    // Folders last, deepest first, so writing files doesn't change their times.
     for (rel, ino) in w.dirs.iter().rev() {
-        let t = ns_to_filetime(ino.mod_time);
-        let _ = filetime::set_file_times(out.join(rel), ns_to_filetime(ino.access_time), t);
+        let path = out.join(rel);
+        let mut notes = Vec::new();
+        if xattrs {
+            restore_xattrs(fs, ino, &path, &mut notes);
+        }
+        if let Err(e) = restore_times(ino, &path, &mut notes) {
+            notes.push(format!("times: {e}"));
+        }
+        if !notes.is_empty() {
+            log("NOTE", if rel.is_empty() { "." } else { rel }, 0, &notes.join("; "));
+        }
     }
     report.lock().unwrap().flush()?;
     let mut s = sum.into_inner().unwrap();
@@ -262,10 +326,11 @@ pub fn extract(fs: &Fs, start: u64, out: &Path, threads: usize) -> Result<Summar
 
 enum CopyResult {
     Skipped,
-    Copied(u64, ReadReport),
+    /// Bytes written, damage found, notes about metadata that was not restored.
+    Copied(u64, ReadReport, Vec<String>),
 }
 
-fn copy_file(fs: &Fs, ino: &Inode, dst: &Path) -> Result<CopyResult> {
+fn copy_file(fs: &Fs, ino: &Inode, dst: &Path, xattrs: bool) -> Result<CopyResult> {
     let mtime = ns_to_filetime(ino.mod_time);
     if !ino.is_compressed()
         && let Ok(m) = fs::metadata(dst)
@@ -285,10 +350,14 @@ fn copy_file(fs: &Fs, ino: &Inode, dst: &Path) -> Result<CopyResult> {
         f.flush()?;
         n
     };
+    let mut notes = Vec::new();
+    if xattrs {
+        restore_xattrs(fs, ino, &tmp, &mut notes);
+    }
     platform::set_mode(&tmp, ino.mode, false)?;
-    filetime::set_file_times(&tmp, ns_to_filetime(ino.access_time), mtime)?;
+    restore_times(ino, &tmp, &mut notes)?;
     fs::rename(&tmp, dst)?;
-    Ok(CopyResult::Copied(n, rep))
+    Ok(CopyResult::Copied(n, rep, notes))
 }
 
 /// Finds files whose data overlaps unreadable areas, without copying anything.

@@ -94,6 +94,10 @@ enum Cmd {
         /// Files copied in parallel.
         #[arg(long, default_value_t = 8, hide_short_help = true)]
         threads: usize,
+        /// Do not restore extended attributes (Finder tags, comments...). They
+        /// are restored on macOS only.
+        #[arg(long)]
+        no_xattrs: bool,
         /// Allow writing to the disk that holds the images (tests only).
         #[arg(long, hide = true)]
         allow_same_disk: bool,
@@ -294,6 +298,7 @@ fn main() -> Result<()> {
             path,
             out,
             threads,
+            no_xattrs,
             allow_same_disk,
         } => {
             if !allow_same_disk {
@@ -302,7 +307,11 @@ fn main() -> Result<()> {
             let c = open(&src)?;
             let f = open_fs(&c, &src)?;
             let id = f.lookup(&path)?;
-            let s = extract::extract(&f, id, &out, threads)?;
+            let opts = extract::CopyOptions {
+                threads,
+                xattrs: !no_xattrs,
+            };
+            let s = extract::extract(&f, id, &out, &opts)?;
             println!(
                 "Done: {} copied fine, {} damaged, {} errors, {} already there. {} written.",
                 s.ok,

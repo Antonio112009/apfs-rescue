@@ -6,6 +6,12 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- On macOS, `copy` restores creation dates and extended attributes (Finder
+  tags, comments, resource forks...) of files and folders. `--no-xattrs`
+  turns attributes off. Problems are listed in the report as `NOTE`.
+
 ## [0.1.0] - 2026-11-14
 
 ### Added

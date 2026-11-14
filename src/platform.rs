@@ -73,6 +73,83 @@ pub fn make_symlink(target: &str, link: &Path) -> std::io::Result<()> {
     std::os::windows::fs::symlink_file(target.replace('/', "\\"), link)
 }
 
+/// Extended attributes and creation dates are restored on macOS only: other
+/// systems have no place for Apple attributes such as Finder tags.
+pub const MAC_METADATA: bool = cfg!(target_os = "macos");
+
+#[cfg(target_os = "macos")]
+fn c_path(path: &Path) -> std::io::Result<std::ffi::CString> {
+    use std::os::unix::ffi::OsStrExt;
+    Ok(std::ffi::CString::new(path.as_os_str().as_bytes())?)
+}
+
+/// Sets one extended attribute on `path` (not following symbolic links).
+#[cfg(target_os = "macos")]
+pub fn set_xattr(path: &Path, name: &str, value: &[u8]) -> std::io::Result<()> {
+    let p = c_path(path)?;
+    let n = std::ffi::CString::new(name)?;
+    // SAFETY: valid NUL-terminated strings and a buffer of the given length.
+    let r = unsafe {
+        libc::setxattr(
+            p.as_ptr(),
+            n.as_ptr(),
+            value.as_ptr().cast(),
+            value.len(),
+            0,
+            libc::XATTR_NOFOLLOW,
+        )
+    };
+    if r == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_xattr(_path: &Path, _name: &str, _value: &[u8]) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::Unsupported.into())
+}
+
+/// Sets the creation ("birth") time, in nanoseconds since 1970.
+#[cfg(target_os = "macos")]
+pub fn set_creation_time(path: &Path, ns: u64) -> std::io::Result<()> {
+    let p = c_path(path)?;
+    let mut list = libc::attrlist {
+        bitmapcount: libc::ATTR_BIT_MAP_COUNT,
+        reserved: 0,
+        commonattr: libc::ATTR_CMN_CRTIME,
+        volattr: 0,
+        dirattr: 0,
+        fileattr: 0,
+        forkattr: 0,
+    };
+    let mut ts = libc::timespec {
+        tv_sec: (ns / 1_000_000_000) as _,
+        tv_nsec: (ns % 1_000_000_000) as _,
+    };
+    // SAFETY: the attribute buffer holds exactly the one timespec requested.
+    let r = unsafe {
+        libc::setattrlist(
+            p.as_ptr(),
+            (&mut list as *mut libc::attrlist).cast(),
+            (&mut ts as *mut libc::timespec).cast(),
+            std::mem::size_of::<libc::timespec>(),
+            libc::FSOPT_NOFOLLOW,
+        )
+    };
+    if r == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_creation_time(_path: &Path, _ns: u64) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::Unsupported.into())
+}
+
 /// Makes one file-name component valid on this system. Returns the name and
 /// whether it had to be changed.
 pub fn portable_name(name: &str) -> (String, bool) {
