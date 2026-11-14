@@ -409,7 +409,7 @@ fn main() -> Result<()> {
                 };
                 rows.push((bytes, files, e.dtype == 4, e.name));
             }
-            rows.sort_by(|a, b| b.0.cmp(&a.0));
+            rows.sort_by_key(|r| std::cmp::Reverse(r.0));
             let (tb, tf): (u64, u64) = rows.iter().fold((0, 0), |a, r| (a.0 + r.0, a.1 + r.1));
             for (bytes, files, dir, name) in &rows {
                 println!(
