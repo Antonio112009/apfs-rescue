@@ -44,6 +44,8 @@ To build from source: install [Rust](https://rustup.rs) and run
   images is refused.
 - **Resumable.** Run the same `copy` again after an interruption; finished
   files are skipped.
+- **Snapshots.** Lists Time Machine and other APFS snapshots and reads the
+  volume as it was then: older versions of files, and files deleted since.
 - Keeps modification dates everywhere; on a Mac also creation dates, Finder
   tags, comments, resource forks and other extended attributes.
 - Transparent macOS compression (zlib, LZVN, LZFSE), Unicode file names,
@@ -54,7 +56,6 @@ To build from source: install [Rust](https://rustup.rs) and run
 - Encrypted volumes (FileVault).
 - Sealed system volumes ("Macintosh HD" on macOS 11+). Your files are in
   "Macintosh HD - Data", which works.
-- Snapshots (older versions of files kept by Time Machine and macOS updates).
 - Reading a disk device directly (make an image first).
 - HFS+ disks.
 

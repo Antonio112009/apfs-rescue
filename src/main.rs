@@ -46,6 +46,10 @@ struct Source {
     /// Volume name or number from `info`. Default: the volume with your data.
     #[arg(long, short, value_name = "VOLUME")]
     volume: Option<String>,
+    /// Read the volume as it was in this snapshot (name or number from `info`).
+    /// Snapshots can hold older versions of files and files deleted since.
+    #[arg(long, short, value_name = "SNAPSHOT")]
+    snapshot: Option<String>,
     /// Advanced: read an older checkpoint (transaction id) instead of the newest.
     #[arg(long, hide_short_help = true)]
     xid: Option<u64>,
@@ -212,7 +216,20 @@ fn pick_volume<'c>(c: &'c Container, sel: &Option<String>) -> Result<&'c VolumeI
 fn open_fs<'c>(c: &'c Container, src: &Source) -> Result<fs::Fs<'c>> {
     let v = pick_volume(c, &src.volume)?;
     eprintln!("Volume: {:?}", v.name);
-    fs::Fs::open(c, v)
+    let Some(sel) = &src.snapshot else {
+        return fs::Fs::open(c, v);
+    };
+    let snaps = fs::snapshots(c, v)?;
+    let snap = snaps
+        .iter()
+        .find(|s| s.name == *sel || s.xid.to_string() == *sel)
+        .with_context(|| format!("no snapshot {sel:?} in volume {:?} (see `info`)", v.name))?;
+    eprintln!(
+        "Snapshot: {:?} from {} UTC",
+        snap.name,
+        extract::fmt_time(snap.create_time)
+    );
+    fs::Fs::open_snapshot(c, v, snap)
 }
 
 fn main() -> Result<()> {
@@ -246,6 +263,22 @@ fn main() -> Result<()> {
                         ""
                     }
                 );
+            }
+            for v in &c.volumes {
+                let snaps = match fs::snapshots(&c, v) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        println!("Snapshots of {:?}: cannot read ({e:#})", v.name);
+                        continue;
+                    }
+                };
+                if snaps.is_empty() {
+                    continue;
+                }
+                println!("Snapshots of {:?} (use -s NUMBER):", v.name);
+                for s in &snaps {
+                    println!("  {:>10}  {} UTC  {}", s.xid, extract::fmt_time(s.create_time), s.name);
+                }
             }
             if c.fusion {
                 let mt = c.fusion_middle_tree()?;
