@@ -6,8 +6,22 @@
 - Work in a short-lived branch (hours or a few days), named after the change:
   `fix/omap-lookup`, `feat/windows-long-paths`, `docs/guide-photos`.
 - Open a pull request into `main` early. CI (`.github/workflows/ci.yml`) runs
-  formatting, clippy with warnings as errors, tests on Linux, macOS and Windows,
-  and a build with the minimum supported Rust version.
+  formatting, clippy with warnings as errors, tests on Linux, macOS and Windows
+  (x64 and ARM), and a build with the minimum supported Rust version.
+
+## Dependencies
+
+There is no automatic update bot. About once a month, on a branch:
+
+```bash
+cargo update            # newest compatible versions
+cargo upgrade -i allow  # newest major versions (needs `cargo install cargo-edit`)
+cargo test
+```
+
+Also check the action versions in `.github/workflows` (`actions/checkout`
+and others) and the runner image names against
+https://github.com/actions/runner-images.
 - Merge with **squash merge** once CI is green, so `main` gets one commit per change.
 - No long-lived `develop` or release branches. Releases are tags on `main`
   (see [RELEASING.md](RELEASING.md)).

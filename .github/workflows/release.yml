@@ -15,7 +15,7 @@ env:
 jobs:
   check:
     name: Check tag and tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Tag must match Cargo.toml version
@@ -38,13 +38,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Each target is built natively on the newest runner image for it.
+        # Linux builds are static (musl), so they run on any distribution.
         include:
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
-          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
-          - { target: aarch64-apple-darwin, os: macos-latest }
-          - { target: x86_64-apple-darwin, os: macos-latest }
-          - { target: x86_64-pc-windows-msvc, os: windows-latest }
-          - { target: aarch64-pc-windows-msvc, os: windows-latest }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-26.04 }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-26.04-arm }
+          - { target: aarch64-apple-darwin, os: macos-26 }
+          - { target: x86_64-apple-darwin, os: macos-26-intel }
+          - { target: x86_64-pc-windows-msvc, os: windows-2025-vs2026 }
+          - { target: aarch64-pc-windows-msvc, os: windows-11-arm }
     runs-on: ${{ matrix.os }}
     env:
       # True only when the repository has an Apple Developer ID certificate.
@@ -119,7 +121,7 @@ jobs:
   publish:
     name: Publish GitHub release
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     steps:

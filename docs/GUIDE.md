@@ -73,7 +73,7 @@ computer:
 | Mac with Intel chip | `…-x86_64-apple-darwin.tar.gz` |
 | Windows (most PCs) | `…-x86_64-pc-windows-msvc.zip` |
 | Windows on ARM | `…-aarch64-pc-windows-msvc.zip` |
-| Linux | `…-x86_64-unknown-linux-gnu.tar.gz` or `…-aarch64-…` |
+| Linux | `…-x86_64-unknown-linux-musl.tar.gz` or `…-aarch64-…` |
 
 Unpack it. Inside is the program `apfs-rescue` (`apfs-rescue.exe` on Windows),
 this guide and the license.
@@ -83,7 +83,7 @@ this guide and the license.
 [GitHub CLI](https://cli.github.com/):
 
 ```bash
-gh attestation verify apfs-rescue-v0.1.0-aarch64-apple-darwin.tar.gz --repo OWNER/apfs-rescue
+gh attestation verify apfs-rescue-v0.1.0-aarch64-apple-darwin.tar.gz --repo Antonio112009/apfs-rescue
 ```
 
 **First start on a Mac.** If the release is not signed with an Apple
@@ -102,7 +102,7 @@ click *More info → Run anyway*.
 Install Rust from [rustup.rs](https://rustup.rs), then:
 
 ```bash
-git clone https://github.com/OWNER/apfs-rescue
+git clone https://github.com/Antonio112009/apfs-rescue
 cd apfs-rescue
 cargo build --release
 ```

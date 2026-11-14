@@ -35,7 +35,7 @@ A tag with a suffix, like `v0.2.0-rc.1`, becomes a pre-release.
 
 **Provenance (free, always on).** Every release file gets a Sigstore-signed
 attestation that it was built by this repository's workflow from a given
-commit. Users check it with `gh attestation verify FILE --repo OWNER/apfs-rescue`.
+commit. Users check it with `gh attestation verify FILE --repo Antonio112009/apfs-rescue`.
 
 **macOS (optional).** Without an Apple Developer ID, macOS blocks the
 downloaded program until the user runs `xattr -d com.apple.quarantine`. To
