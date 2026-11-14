@@ -6,19 +6,9 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
-### Added
+## [0.2.0] - 2026-11-14
 
-- On macOS, `copy` restores creation dates and extended attributes (Finder
-  tags, comments, resource forks...) of files and folders. `--no-xattrs`
-  turns attributes off. Problems are listed in the report as `NOTE`.
-- `mount` shows a volume, folder or snapshot as a read-only disk. On macOS it
-  needs nothing installed: a local NFS server (`nfsserve`) mounted with the
-  system's `mount_nfs`. On Linux it uses FUSE.
-- `size` (`du`) shows how much each item in a folder takes, without copying.
-- Snapshots: `info` lists them, and `--snapshot` (`-s`) makes `ls`, `copy`
-  and `damaged` read a volume as it was when the snapshot was taken.
-
-## [0.1.0] - 2026-11-14
+First published release.
 
 ### Added
 
@@ -35,3 +25,21 @@ All notable changes are listed here. The format follows
   and refuses to write onto the disk that holds the images.
 - Windows support: file names that Windows does not allow are renamed and
   listed in the report.
+- On macOS, `copy` restores creation dates and extended attributes (Finder
+  tags, comments, resource forks...) of files and folders. `--no-xattrs`
+  turns attributes off. Problems are listed in the report as `NOTE`.
+- `mount` shows a volume, folder or snapshot as a read-only disk. On macOS it
+  needs nothing installed: a local NFS server (`nfsserve`) mounted with the
+  system's `mount_nfs`. On Linux it uses FUSE.
+- `size` (`du`) shows how much each item in a folder takes, without copying.
+- Snapshots: `info` lists them, and `--snapshot` (`-s`) makes `ls`, `copy`
+  and `damaged` read a volume as it was when the snapshot was taken.
+
+### Changed
+
+- Release builds for Linux are static (musl) and run on any distribution.
+
+### Fixed
+
+- `mount` also removes the empty `~/apfs-rescue-mounts` folder after unmounting.
+- Clearer message for macOS compression types that are not supported yet.
