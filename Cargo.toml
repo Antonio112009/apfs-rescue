@@ -1,0 +1,16 @@
+[package]
+name = "apfs-rescue"
+version = "0.1.0"
+edition = "2024"
+description = "Read-only recovery of files from APFS disk images, including Fusion Drives"
+license = "MIT"
+rust-version = "1.88"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+filetime = "0.2.29"
+flate2 = "1.1.11"
+lzfse_rust = "0.2.1"
+rayon = "1.12.0"
+unicode-normalization = "0.1.26"
