@@ -69,6 +69,9 @@ pub struct VolumeInfo {
     pub num_dirs: u64,
     pub omap_oid: u64,
     pub root_tree_oid: u64,
+    /// Physical address of the snapshot metadata tree (0 if none).
+    pub snap_meta_tree_oid: u64,
+    pub num_snapshots: u64,
 }
 
 impl VolumeInfo {
@@ -230,6 +233,8 @@ impl Container {
                 num_dirs: le64(&b, 192),
                 omap_oid: le64(&b, 128),
                 root_tree_oid: le64(&b, 136),
+                snap_meta_tree_oid: le64(&b, 152),
+                num_snapshots: le64(&b, 216),
             });
         }
         Ok(out)

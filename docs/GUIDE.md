@@ -12,6 +12,7 @@ Mac that no longer starts. [A Russian version is here](GUIDE.ru.md).
 - [5. Which files are damaged: `damaged`](#5-which-files-are-damaged-damaged)
 - [6. Copy: `copy`](#6-copy-copy)
 - [7. Check the copy](#7-check-the-copy)
+- [7a. Older versions and deleted files: snapshots](#7a-older-versions-and-deleted-files-snapshots)
 - [8. Photos and iPhoto libraries](#8-photos-and-iphoto-libraries)
 - [9. Error messages](#9-error-messages)
 - [10. Questions](#10-questions)
@@ -247,6 +248,31 @@ restored is listed in the report as `NOTE`.
   when everything went well.
 
 Only after this, consider what to do with the old disk. Keep the images.
+
+## 7a. Older versions and deleted files: snapshots
+
+macOS keeps *snapshots*: frozen views of the disk from a moment in the past.
+When Time Machine is turned on, it makes one about every hour and keeps them
+for about a day; macOS also makes snapshots for system updates. A snapshot can hold a file you deleted
+or an older version of a file you changed.
+
+`info` lists them at the end:
+
+```
+Snapshots of "Macintosh HD - Data" (use -s NUMBER):
+    44191693  2026-11-09 20:06 UTC  com.apple.TimeMachine.2026-11-09-162407.local
+```
+
+Add `-s NUMBER` (or the snapshot's name) to `ls`, `copy` or `damaged` to see
+the disk as it was then:
+
+```bash
+./apfs-rescue ls   ssd.img hdd.img -s 44191693 -p Users/NAME/Desktop
+./apfs-rescue copy ssd.img hdd.img -s 44191693 -p Users/NAME/Desktop -o /Volumes/NewDisk/Desktop-snapshot
+```
+
+Copy a snapshot into its own folder so it does not mix with the current files.
+Snapshots share data with the current files, so damaged areas affect both.
 
 ## 8. Photos and iPhoto libraries
 

@@ -1,7 +1,7 @@
 //! File-system tree of one volume: inodes, directory records, extended
 //! attributes, file extents and transparent (decmpfs) compression.
 
-use crate::btree::Tree;
+use crate::btree::{Loc, Physical, Tree};
 use crate::container::{Container, Omap, VolumeInfo, cmp_hdr};
 use crate::device::Store;
 use crate::util::{be32, cstr, le16, le32, le64, slice};
@@ -72,6 +72,45 @@ pub struct Xattr {
     pub data: XattrData,
 }
 
+/// A snapshot of a volume (`j_snap_metadata_val_t`).
+#[derive(Debug, Clone)]
+pub struct Snapshot {
+    /// Transaction id when the snapshot was taken.
+    pub xid: u64,
+    pub name: String,
+    /// Nanoseconds since 1970.
+    pub create_time: u64,
+    /// Physical address of the volume superblock saved with the snapshot.
+    pub sblock: u64,
+}
+
+const T_SNAP_METADATA: u8 = 1;
+
+/// Snapshots of a volume, oldest first.
+pub fn snapshots(c: &Container, info: &VolumeInfo) -> Result<Vec<Snapshot>> {
+    if info.snap_meta_tree_oid == 0 {
+        return Ok(Vec::new());
+    }
+    let tree = Tree::open(&c.store, Loc::phys(info.snap_meta_tree_oid), Physical).context("snapshot metadata tree")?;
+    let mut out = Vec::new();
+    for r in tree.iter_all()? {
+        let (k, v) = r?;
+        let hdr = le64(&k, 0);
+        if (hdr >> 60) as u8 != T_SNAP_METADATA || v.len() < 50 {
+            continue;
+        }
+        let name_len = le16(&v, 48) as usize;
+        out.push(Snapshot {
+            xid: hdr & OBJ_ID_MASK,
+            name: cstr(slice(&v, 50, name_len)?),
+            create_time: le64(&v, 16),
+            sblock: le64(&v, 8),
+        });
+    }
+    out.sort_by_key(|s| (s.create_time, s.xid));
+    Ok(out)
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Extent {
     pub logical: u64,
@@ -111,8 +150,37 @@ impl<'a> Fs<'a> {
                 info.name
             );
         }
-        let omap = Omap::open(&c.store, info.omap_oid, c.xid).context("volume object map")?;
-        let root = crate::btree::Resolve::resolve(&omap, info.root_tree_oid)?;
+        Self::open_at(c, info, info.omap_oid, info.root_tree_oid, c.xid)
+    }
+
+    /// Opens the volume as it was when `snap` was taken.
+    pub fn open_snapshot(c: &'a Container, info: &VolumeInfo, snap: &Snapshot) -> Result<Fs<'a>> {
+        if info.encrypted() {
+            bail!(
+                "volume {:?} is encrypted; this tool reads only unencrypted volumes",
+                info.name
+            );
+        }
+        let b = c
+            .store
+            .read_object(snap.sblock, true)
+            .context("snapshot volume superblock")?;
+        if &b[32..36] != b"APSB" {
+            bail!("snapshot {:?}: its volume superblock is not valid", snap.name);
+        }
+        // The snapshot's saved superblock names the tree. Its object-map field
+        // is empty (observed), so the volume's current object map is used: it
+        // keeps the node versions as of the snapshot's transaction.
+        let omap_oid = match le64(&b, 128) {
+            0 => info.omap_oid,
+            o => o,
+        };
+        Self::open_at(c, info, omap_oid, le64(&b, 136), snap.xid)
+    }
+
+    fn open_at(c: &'a Container, info: &VolumeInfo, omap_oid: u64, root_tree_oid: u64, xid: u64) -> Result<Fs<'a>> {
+        let omap = Omap::open(&c.store, omap_oid, xid).context("volume object map")?;
+        let root = crate::btree::Resolve::resolve(&omap, root_tree_oid)?;
         let tree = Tree::open(&c.store, root, omap).context("volume file-system tree")?;
         Ok(Fs {
             store: &c.store,
@@ -444,7 +512,7 @@ fn decmpfs(hdr: &[u8], rsrc: impl FnOnce(&mut ReadReport) -> Result<Vec<u8>>, re
             }
             out
         }
-        t => bail!("unsupported decmpfs compression type {t}"),
+        t => bail!("macOS compression type {t} is not supported yet; file not copied"),
     };
     if out.len() != size {
         bail!("decompressed size {} differs from expected {size}", out.len());
