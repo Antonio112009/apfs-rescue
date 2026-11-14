@@ -108,6 +108,15 @@ enum Cmd {
         #[arg(long, hide = true)]
         allow_same_disk: bool,
     },
+    /// Show how much each item in a folder takes, without copying anything.
+    #[command(alias = "du")]
+    Size {
+        #[command(flatten)]
+        src: Source,
+        /// Folder inside the volume (default: top level).
+        #[arg(long, short, default_value = "")]
+        path: String,
+    },
     /// List files whose data lies in unreadable areas (needs a ddrescue map). Copies nothing.
     Damaged {
         #[command(flatten)]
@@ -381,6 +390,37 @@ fn main() -> Result<()> {
                     out.join("_apfs-rescue-report.tsv").display()
                 );
             }
+        }
+        Cmd::Size { src, path } => {
+            let c = open(&src)?;
+            let f = open_fs(&c, &src)?;
+            let id = f.lookup(&path)?;
+            let mut rows = Vec::new();
+            for e in f.readdir(id)? {
+                let (bytes, files) = match e.dtype {
+                    4 => match extract::walk(&f, e.id) {
+                        Ok(w) => (w.files.iter().map(|j| j.ino.size).sum(), w.files.len() as u64),
+                        Err(err) => {
+                            eprintln!("{}: {err:#}", e.name);
+                            continue;
+                        }
+                    },
+                    _ => (f.inode(e.id).map(|i| i.size).unwrap_or(0), 1),
+                };
+                rows.push((bytes, files, e.dtype == 4, e.name));
+            }
+            rows.sort_by(|a, b| b.0.cmp(&a.0));
+            let (tb, tf): (u64, u64) = rows.iter().fold((0, 0), |a, r| (a.0 + r.0, a.1 + r.1));
+            for (bytes, files, dir, name) in &rows {
+                println!(
+                    "{:>10}  {:>9} files  {}{}",
+                    human(*bytes),
+                    files,
+                    name,
+                    if *dir { "/" } else { "" }
+                );
+            }
+            println!("{:>10}  {:>9} files  (total)", human(tb), tf);
         }
         Cmd::Damaged { src, path } => {
             let c = open(&src)?;
