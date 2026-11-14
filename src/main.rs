@@ -6,11 +6,15 @@ mod damage;
 mod device;
 mod extract;
 mod fs;
-#[cfg(unix)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod mount;
+#[cfg(target_os = "macos")]
+mod nfs_mount;
 mod obj;
 mod platform;
 mod util;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod view;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -126,8 +130,8 @@ enum Cmd {
         path: String,
     },
     /// Show the volume (or one folder) as a read-only disk you can browse in
-    /// Finder or a file manager. Needs macFUSE on a Mac, fuse3 on Linux.
-    #[cfg(unix)]
+    /// Finder or a file manager. Built in on a Mac; needs fuse3 on Linux.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[command(after_help = mount::INSTALL_HELP)]
     Mount {
         #[command(flatten)]
@@ -444,9 +448,8 @@ fn main() -> Result<()> {
                 hits.len() - damaged
             );
         }
-        #[cfg(unix)]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         Cmd::Mount { src, path, mountpoint } => {
-            mount::check_fuse()?;
             // The mount lives until the process ends, so the container may too.
             let c: &'static Container = Box::leak(Box::new(open(&src)?));
             let f = open_fs(c, &src)?;
@@ -467,9 +470,7 @@ fn main() -> Result<()> {
                     PathBuf::from(home).join("apfs-rescue-mounts").join(&volname)
                 }
             };
-            let s = &c.store;
-            let blocks = (s.main.len + s.tier2.as_ref().map_or(0, |t| t.len)) / s.bs;
-            mount::run(mount::RescueFs::new(f, id, blocks), &mp, &volname)?;
+            mount::run(view::View::new(f, id), &mp, &volname)?;
         }
         Cmd::FusionCheck { src, samples } => {
             let c = open(&src)?;

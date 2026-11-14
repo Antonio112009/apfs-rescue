@@ -287,51 +287,24 @@ only what you need.
 ./apfs-rescue mount ssd.img hdd.img -s 44191693                   # a snapshot
 ```
 
-It appears in Finder's sidebar under **Locations**. Nothing can be changed on
-it. Opening a file that touches unreadable areas prints a warning in the
+A Finder window with the disk opens. Nothing can be changed on it. Opening a file that touches unreadable areas prints a warning in the
 terminal. To finish, press **Ctrl+C** in the terminal or **Eject** it in Finder.
 `--at FOLDER` chooses where it is mounted (default: `~/apfs-rescue-mounts`).
 
 `mount` works on macOS and Linux. Windows: use `copy`.
 
-### One-time setup on a Mac: macFUSE
+### What it needs
 
-`mount` uses [macFUSE](https://macfuse.github.io), a free add-on that lets
-programs show disks in Finder. `info`, `ls`, `copy` and `damaged` do not need
-it. Set it up once:
+- **Mac:** nothing. apfs-rescue serves the disk through macOS's own network
+  file system (NFS) on this computer only (127.0.0.1); no macFUSE, FUSE-T or
+  system extension is needed, and no settings have to be changed. A Finder
+  window opens when the disk is ready.
+- **Linux:** the `fuse3` package (`sudo apt install fuse3`).
+- **Windows:** not supported yet; use `copy`.
 
-1. Install macFUSE **5.5.0 or later** (read-only disks need it):
-
-   ```bash
-   brew install --cask macfuse
-   ```
-
-   or download it from macfuse.github.io. The installer asks for your password.
-
-2. Open the macFUSE app once:
-
-   ```bash
-   open /Library/Filesystems/macfuse.fs/Contents/Resources/macfuse.app
-   ```
-
-   If macOS asks whether to allow or register macFUSE, allow it.
-
-3. Open **System Settings → General → Login Items & Extensions**. In the
-   **Extensions** part, switch the view to **By Category**, click ⓘ next to
-   **File System Extensions** and turn on **macFUSE** ("macFUSE (local)" is not
-   needed).
-
-   The switch in the **By Application** view does not react; this is a known
-   macOS bug ([macfuse/macfuse#1194](https://github.com/macfuse/macfuse/issues/1194)).
-
-4. **Eject external disks and restart the Mac.** Until then macOS may not
-   notice the new setting, and `mount` fails with *File system extension not
-   found*.
-
-macFUSE no longer needs a kernel extension or lowered security: on macOS 15.4
-and later it uses Apple's FSKit, and apfs-rescue selects that automatically.
-
-On Linux, install the `fuse3` package (`sudo apt install fuse3`).
+On a Mac the mounted disk shows contents, sizes and modification dates.
+Finder tags and creation dates are not shown there (NFS has no place for
+them); `copy` keeps them.
 
 ## 8. Photos and iPhoto libraries
 

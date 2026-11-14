@@ -11,9 +11,10 @@ All notable changes are listed here. The format follows
 - On macOS, `copy` restores creation dates and extended attributes (Finder
   tags, comments, resource forks...) of files and folders. `--no-xattrs`
   turns attributes off. Problems are listed in the report as `NOTE`.
-- `mount` shows a volume, folder or snapshot as a read-only disk in Finder or
-  a Linux file manager (macFUSE 5.5+ / FUSE). macFUSE is optional: the other
-  commands work without it, and `mount` explains how to set it up.
+- `mount` shows a volume, folder or snapshot as a read-only disk. On macOS it
+  needs nothing installed: a local NFS server (`nfsserve`) mounted with the
+  system's `mount_nfs`. On Linux it uses FUSE.
+- `size` (`du`) shows how much each item in a folder takes, without copying.
 - Snapshots: `info` lists them, and `--snapshot` (`-s`) makes `ls`, `copy`
   and `damaged` read a volume as it was when the snapshot was taken.
 
