@@ -13,6 +13,7 @@ Mac that no longer starts. [A Russian version is here](GUIDE.ru.md).
 - [6. Copy: `copy`](#6-copy-copy)
 - [7. Check the copy](#7-check-the-copy)
 - [7a. Older versions and deleted files: snapshots](#7a-older-versions-and-deleted-files-snapshots)
+- [7b. Browse the disk in Finder: `mount`](#7b-browse-the-disk-in-finder-mount)
 - [8. Photos and iPhoto libraries](#8-photos-and-iphoto-libraries)
 - [9. Error messages](#9-error-messages)
 - [10. Questions](#10-questions)
@@ -273,6 +274,64 @@ the disk as it was then:
 
 Copy a snapshot into its own folder so it does not mix with the current files.
 Snapshots share data with the current files, so damaged areas affect both.
+
+## 7b. Browse the disk in Finder: `mount`
+
+Instead of copying everything, you can show the old disk as a read-only disk
+and look around in Finder: open photos with Quick Look (space bar), drag out
+only what you need.
+
+```bash
+./apfs-rescue mount ssd.img hdd.img
+./apfs-rescue mount ssd.img hdd.img -p Users/NAME/Pictures        # one folder
+./apfs-rescue mount ssd.img hdd.img -s 44191693                   # a snapshot
+```
+
+It appears in Finder's sidebar under **Locations**. Nothing can be changed on
+it. Opening a file that touches unreadable areas prints a warning in the
+terminal. To finish, press **Ctrl+C** in the terminal or **Eject** it in Finder.
+`--at FOLDER` chooses where it is mounted (default: `~/apfs-rescue-mounts`).
+
+`mount` works on macOS and Linux. Windows: use `copy`.
+
+### One-time setup on a Mac: macFUSE
+
+`mount` uses [macFUSE](https://macfuse.github.io), a free add-on that lets
+programs show disks in Finder. `info`, `ls`, `copy` and `damaged` do not need
+it. Set it up once:
+
+1. Install macFUSE **5.5.0 or later** (read-only disks need it):
+
+   ```bash
+   brew install --cask macfuse
+   ```
+
+   or download it from macfuse.github.io. The installer asks for your password.
+
+2. Open the macFUSE app once:
+
+   ```bash
+   open /Library/Filesystems/macfuse.fs/Contents/Resources/macfuse.app
+   ```
+
+   If macOS asks whether to allow or register macFUSE, allow it.
+
+3. Open **System Settings → General → Login Items & Extensions**. In the
+   **Extensions** part, switch the view to **By Category**, click ⓘ next to
+   **File System Extensions** and turn on **macFUSE** ("macFUSE (local)" is not
+   needed).
+
+   The switch in the **By Application** view does not react; this is a known
+   macOS bug ([macfuse/macfuse#1194](https://github.com/macfuse/macfuse/issues/1194)).
+
+4. **Eject external disks and restart the Mac.** Until then macOS may not
+   notice the new setting, and `mount` fails with *File system extension not
+   found*.
+
+macFUSE no longer needs a kernel extension or lowered security: on macOS 15.4
+and later it uses Apple's FSKit, and apfs-rescue selects that automatically.
+
+On Linux, install the `fuse3` package (`sudo apt install fuse3`).
 
 ## 8. Photos and iPhoto libraries
 

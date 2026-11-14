@@ -392,6 +392,7 @@ macOS has not allowed macFUSE to run yet. Turn it on once:
        brew install --cask macfuse      (or https://macfuse.github.io)
   2. Open the macFUSE app once:
        open /Library/Filesystems/macfuse.fs/Contents/Resources/macfuse.app
+     If macOS asks whether to allow or register macFUSE, allow it.
   3. System Settings > General > Login Items & Extensions. Switch the
      Extensions list to \"By Category\", open File System Extensions (i) and
      turn on macFUSE. (The switch in the \"By Application\" view does not
