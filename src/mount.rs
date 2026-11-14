@@ -15,6 +15,18 @@ How `mount` works on each system:
   Linux:   needs FUSE: install the fuse3 package (e.g. `sudo apt install fuse3`).
   Windows: not supported yet; use `copy` instead.";
 
+/// Removes the mount folder after unmounting, and the default parent folder
+/// `apfs-rescue-mounts` too when nothing else is left in it. Never removes
+/// anything that is not empty.
+pub fn cleanup(mountpoint: &Path) {
+    let _ = std::fs::remove_dir(mountpoint);
+    if let Some(parent) = mountpoint.parent()
+        && parent.file_name().is_some_and(|n| n == "apfs-rescue-mounts")
+    {
+        let _ = std::fs::remove_dir(parent);
+    }
+}
+
 pub fn run(view: View, mountpoint: &Path, volname: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
     return crate::nfs_mount::run(view, mountpoint, volname);
@@ -252,7 +264,7 @@ mod fuse {
         let session = match fuser::spawn_mount(FuseView { view, uid, gid }, mountpoint, &config) {
             Ok(s) => s,
             Err(e) => {
-                let _ = std::fs::remove_dir(mountpoint);
+                super::cleanup(mountpoint);
                 bail!("could not mount at {} ({e}).\n\n{INSTALL_HELP}", mountpoint.display());
             }
         };
@@ -265,7 +277,7 @@ mod fuse {
         eprintln!("Mounted read-only at {}", mountpoint.display());
         eprintln!("Press Ctrl+C here (or unmount it in the file manager) to finish.");
         session.join().context("FUSE session")?;
-        let _ = std::fs::remove_dir(mountpoint);
+        super::cleanup(mountpoint);
         eprintln!("Unmounted.");
         Ok(())
     }

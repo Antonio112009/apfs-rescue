@@ -226,7 +226,7 @@ pub fn run(view: View, mountpoint: &Path, volname: &str) -> Result<()> {
         })
         .await??;
         if !out.status.success() {
-            let _ = std::fs::remove_dir(mountpoint);
+            crate::mount::cleanup(mountpoint);
             bail!("mount_nfs failed: {}", String::from_utf8_lossy(&out.stderr).trim());
         }
 
@@ -253,7 +253,7 @@ pub fn run(view: View, mountpoint: &Path, volname: &str) -> Result<()> {
                 }
             }
         }
-        let _ = std::fs::remove_dir(mountpoint); // only removes it if empty
+        crate::mount::cleanup(mountpoint);
         eprintln!("Unmounted.");
         Ok(())
     })
