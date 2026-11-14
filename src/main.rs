@@ -6,9 +6,15 @@ mod damage;
 mod device;
 mod extract;
 mod fs;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod mount;
+#[cfg(target_os = "macos")]
+mod nfs_mount;
 mod obj;
 mod platform;
 mod util;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod view;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -106,6 +112,15 @@ enum Cmd {
         #[arg(long, hide = true)]
         allow_same_disk: bool,
     },
+    /// Show how much each item in a folder takes, without copying anything.
+    #[command(alias = "du")]
+    Size {
+        #[command(flatten)]
+        src: Source,
+        /// Folder inside the volume (default: top level).
+        #[arg(long, short, default_value = "")]
+        path: String,
+    },
     /// List files whose data lies in unreadable areas (needs a ddrescue map). Copies nothing.
     Damaged {
         #[command(flatten)]
@@ -113,6 +128,20 @@ enum Cmd {
         /// Folder inside the volume (default: whole volume).
         #[arg(long, short, default_value = "")]
         path: String,
+    },
+    /// Show the volume (or one folder) as a read-only disk you can browse in
+    /// Finder or a file manager. Built in on a Mac; needs fuse3 on Linux.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[command(after_help = mount::INSTALL_HELP)]
+    Mount {
+        #[command(flatten)]
+        src: Source,
+        /// Folder inside the volume to show (default: the whole volume).
+        #[arg(long, short, default_value = "")]
+        path: String,
+        /// Empty folder to mount on (default: a new folder in ~/apfs-rescue-mounts).
+        #[arg(long = "at", value_name = "FOLDER")]
+        mountpoint: Option<PathBuf>,
     },
     /// Advanced: compare Fusion cache entries with HDD data.
     #[command(hide = true)]
@@ -366,6 +395,37 @@ fn main() -> Result<()> {
                 );
             }
         }
+        Cmd::Size { src, path } => {
+            let c = open(&src)?;
+            let f = open_fs(&c, &src)?;
+            let id = f.lookup(&path)?;
+            let mut rows = Vec::new();
+            for e in f.readdir(id)? {
+                let (bytes, files) = match e.dtype {
+                    4 => match extract::walk(&f, e.id) {
+                        Ok(w) => (w.files.iter().map(|j| j.ino.size).sum(), w.files.len() as u64),
+                        Err(err) => {
+                            eprintln!("{}: {err:#}", e.name);
+                            continue;
+                        }
+                    },
+                    _ => (f.inode(e.id).map(|i| i.size).unwrap_or(0), 1),
+                };
+                rows.push((bytes, files, e.dtype == 4, e.name));
+            }
+            rows.sort_by_key(|r| std::cmp::Reverse(r.0));
+            let (tb, tf): (u64, u64) = rows.iter().fold((0, 0), |a, r| (a.0 + r.0, a.1 + r.1));
+            for (bytes, files, dir, name) in &rows {
+                println!(
+                    "{:>10}  {:>9} files  {}{}",
+                    human(*bytes),
+                    files,
+                    name,
+                    if *dir { "/" } else { "" }
+                );
+            }
+            println!("{:>10}  {:>9} files  (total)", human(tb), tf);
+        }
         Cmd::Damaged { src, path } => {
             let c = open(&src)?;
             if c.store.damage.ranges.is_empty() {
@@ -387,6 +447,30 @@ fn main() -> Result<()> {
                 "{damaged} damaged files, {} repaired from the Fusion SSD cache",
                 hits.len() - damaged
             );
+        }
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        Cmd::Mount { src, path, mountpoint } => {
+            // The mount lives until the process ends, so the container may too.
+            let c: &'static Container = Box::leak(Box::new(open(&src)?));
+            let f = open_fs(c, &src)?;
+            let id = f.lookup(&path)?;
+            let base = path
+                .rsplit('/')
+                .find(|s| !s.is_empty())
+                .unwrap_or(&f.info.name)
+                .to_string();
+            let volname = match &src.snapshot {
+                Some(s) => format!("{base} (snapshot {s})"),
+                None => base,
+            };
+            let mp = match mountpoint {
+                Some(p) => p,
+                None => {
+                    let home = std::env::var_os("HOME").context("HOME is not set; give a mount folder")?;
+                    PathBuf::from(home).join("apfs-rescue-mounts").join(&volname)
+                }
+            };
+            mount::run(view::View::new(f, id), &mp, &volname)?;
         }
         Cmd::FusionCheck { src, samples } => {
             let c = open(&src)?;

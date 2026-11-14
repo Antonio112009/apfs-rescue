@@ -20,6 +20,7 @@ apfs-rescue info  ssd.img hdd.img                       # what is inside
 apfs-rescue ls    ssd.img hdd.img -p Users/NAME         # browse
 apfs-rescue damaged ssd.img hdd.img -p Users/NAME       # which files are damaged
 apfs-rescue copy  ssd.img hdd.img -p Users/NAME/Pictures -o /Volumes/Backup/Pictures
+apfs-rescue mount ssd.img hdd.img                       # browse it in Finder, read-only
 ```
 
 For a normal (non-Fusion) disk give one image. ddrescue map files named like
@@ -44,6 +45,9 @@ To build from source: install [Rust](https://rustup.rs) and run
   images is refused.
 - **Resumable.** Run the same `copy` again after an interruption; finished
   files are skipped.
+- **Browse in Finder.** `mount` shows the old disk read-only in Finder, with
+  nothing to install: on a Mac it uses the system's own NFS on 127.0.0.1; on
+  Linux it uses FUSE.
 - **Snapshots.** Lists Time Machine and other APFS snapshots and reads the
   volume as it was then: older versions of files, and files deleted since.
 - Keeps modification dates everywhere; on a Mac also creation dates, Finder

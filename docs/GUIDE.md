@@ -13,6 +13,7 @@ Mac that no longer starts. [A Russian version is here](GUIDE.ru.md).
 - [6. Copy: `copy`](#6-copy-copy)
 - [7. Check the copy](#7-check-the-copy)
 - [7a. Older versions and deleted files: snapshots](#7a-older-versions-and-deleted-files-snapshots)
+- [7b. Browse the disk in Finder: `mount`](#7b-browse-the-disk-in-finder-mount)
 - [8. Photos and iPhoto libraries](#8-photos-and-iphoto-libraries)
 - [9. Error messages](#9-error-messages)
 - [10. Questions](#10-questions)
@@ -273,6 +274,37 @@ the disk as it was then:
 
 Copy a snapshot into its own folder so it does not mix with the current files.
 Snapshots share data with the current files, so damaged areas affect both.
+
+## 7b. Browse the disk in Finder: `mount`
+
+Instead of copying everything, you can show the old disk as a read-only disk
+and look around in Finder: open photos with Quick Look (space bar), drag out
+only what you need.
+
+```bash
+./apfs-rescue mount ssd.img hdd.img
+./apfs-rescue mount ssd.img hdd.img -p Users/NAME/Pictures        # one folder
+./apfs-rescue mount ssd.img hdd.img -s 44191693                   # a snapshot
+```
+
+A Finder window with the disk opens. Nothing can be changed on it. Opening a file that touches unreadable areas prints a warning in the
+terminal. To finish, press **Ctrl+C** in the terminal or **Eject** it in Finder.
+`--at FOLDER` chooses where it is mounted (default: `~/apfs-rescue-mounts`).
+
+`mount` works on macOS and Linux. Windows: use `copy`.
+
+### What it needs
+
+- **Mac:** nothing. apfs-rescue serves the disk through macOS's own network
+  file system (NFS) on this computer only (127.0.0.1); no macFUSE, FUSE-T or
+  system extension is needed, and no settings have to be changed. A Finder
+  window opens when the disk is ready.
+- **Linux:** the `fuse3` package (`sudo apt install fuse3`).
+- **Windows:** not supported yet; use `copy`.
+
+On a Mac the mounted disk shows contents, sizes and modification dates.
+Finder tags and creation dates are not shown there (NFS has no place for
+them); `copy` keeps them.
 
 ## 8. Photos and iPhoto libraries
 

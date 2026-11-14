@@ -18,5 +18,16 @@ unicode-normalization = "0.1.26"
 [profile.release]
 strip = true
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(unix)'.dependencies]
 libc = "0.2.191"
+
+# `mount` on Linux: the kernel's FUSE.
+[target.'cfg(target_os = "linux")'.dependencies]
+fuser = "0.18.0"
+ctrlc = "3.5.2"
+
+# `mount` on macOS: a local NFS server, mounted with the system's mount_nfs.
+[target.'cfg(target_os = "macos")'.dependencies]
+async-trait = "0.1.92"
+nfsserve = "0.11.0"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "time", "signal"] }
