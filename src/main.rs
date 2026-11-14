@@ -6,6 +6,8 @@ mod damage;
 mod device;
 mod extract;
 mod fs;
+#[cfg(unix)]
+mod mount;
 mod obj;
 mod platform;
 mod util;
@@ -113,6 +115,20 @@ enum Cmd {
         /// Folder inside the volume (default: whole volume).
         #[arg(long, short, default_value = "")]
         path: String,
+    },
+    /// Show the volume (or one folder) as a read-only disk you can browse in
+    /// Finder or a file manager. Needs macFUSE on a Mac, fuse3 on Linux.
+    #[cfg(unix)]
+    #[command(after_help = mount::INSTALL_HELP)]
+    Mount {
+        #[command(flatten)]
+        src: Source,
+        /// Folder inside the volume to show (default: the whole volume).
+        #[arg(long, short, default_value = "")]
+        path: String,
+        /// Empty folder to mount on (default: a new folder in ~/apfs-rescue-mounts).
+        #[arg(long = "at", value_name = "FOLDER")]
+        mountpoint: Option<PathBuf>,
     },
     /// Advanced: compare Fusion cache entries with HDD data.
     #[command(hide = true)]
@@ -387,6 +403,33 @@ fn main() -> Result<()> {
                 "{damaged} damaged files, {} repaired from the Fusion SSD cache",
                 hits.len() - damaged
             );
+        }
+        #[cfg(unix)]
+        Cmd::Mount { src, path, mountpoint } => {
+            mount::check_fuse()?;
+            // The mount lives until the process ends, so the container may too.
+            let c: &'static Container = Box::leak(Box::new(open(&src)?));
+            let f = open_fs(c, &src)?;
+            let id = f.lookup(&path)?;
+            let base = path
+                .rsplit('/')
+                .find(|s| !s.is_empty())
+                .unwrap_or(&f.info.name)
+                .to_string();
+            let volname = match &src.snapshot {
+                Some(s) => format!("{base} (snapshot {s})"),
+                None => base,
+            };
+            let mp = match mountpoint {
+                Some(p) => p,
+                None => {
+                    let home = std::env::var_os("HOME").context("HOME is not set; give a mount folder")?;
+                    PathBuf::from(home).join("apfs-rescue-mounts").join(&volname)
+                }
+            };
+            let s = &c.store;
+            let blocks = (s.main.len + s.tier2.as_ref().map_or(0, |t| t.len)) / s.bs;
+            mount::run(mount::RescueFs::new(f, id, blocks), &mp, &volname)?;
         }
         Cmd::FusionCheck { src, samples } => {
             let c = open(&src)?;

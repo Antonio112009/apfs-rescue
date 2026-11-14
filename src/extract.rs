@@ -139,23 +139,16 @@ pub struct CopyOptions {
     pub xattrs: bool,
 }
 
-/// Attributes that describe how APFS stores the file, or that would get in
-/// the way on the copy, are not restored.
-fn restore_xattr(name: &str, compressed: bool) -> bool {
-    match name {
-        "com.apple.decmpfs" | "com.apple.quarantine" => false,
-        "com.apple.ResourceFork" => !compressed, // holds the compressed data
-        n => !n.starts_with("com.apple.fs.") && !n.starts_with("com.apple.system."),
-    }
-}
-
 /// Restores extended attributes on `path`; problems become report notes.
 fn restore_xattrs(fs: &Fs, ino: &Inode, path: &Path, notes: &mut Vec<String>) {
     let list = match fs.xattrs(ino.id) {
         Ok(l) => l,
         Err(e) => return notes.push(format!("attributes: {e:#}")),
     };
-    for x in list.iter().filter(|x| restore_xattr(&x.name, ino.is_compressed())) {
+    for x in list
+        .iter()
+        .filter(|x| crate::fs::user_xattr(&x.name, ino.is_compressed()))
+    {
         let mut rep = ReadReport::default();
         match fs.xattr_bytes(x, &mut rep) {
             Ok(v) => {

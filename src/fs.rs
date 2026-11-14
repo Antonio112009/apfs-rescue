@@ -36,6 +36,7 @@ pub struct Inode {
     pub create_time: u64,
     pub mod_time: u64,
     pub access_time: u64,
+    pub change_time: u64,
     pub bsd_flags: u32,
     pub mode: u16,
     pub uid: u32,
@@ -280,45 +281,72 @@ impl<'a> Fs<'a> {
 
     /// Streams `size` bytes of data stream `stream_id` into `out`.
     pub fn read_stream(&self, stream_id: u64, size: u64, out: &mut dyn Write, rep: &mut ReadReport) -> Result<()> {
+        self.read_stream_range(stream_id, size, 0, size, out, rep)
+    }
+
+    /// Streams bytes `[start, start+len)` (clipped to `size`) of data stream
+    /// `stream_id` into `out`. Holes and missing extents read as zeros; byte
+    /// ranges that come from unreadable areas are added to `rep`.
+    pub fn read_stream_range(
+        &self,
+        stream_id: u64,
+        size: u64,
+        start: u64,
+        len: u64,
+        out: &mut dyn Write,
+        rep: &mut ReadReport,
+    ) -> Result<()> {
         let bs = self.store.bs;
-        let mut pos = 0u64;
+        let end = start.saturating_add(len).min(size);
+        let mut pos = start;
+        if pos >= end {
+            return Ok(());
+        }
         let mut buf = Vec::new();
         for e in self.extents(stream_id)? {
-            if pos >= size {
+            let ext_end = e.logical.saturating_add(e.len).min(end);
+            if ext_end <= pos {
+                continue;
+            }
+            if e.logical >= end {
                 break;
             }
             if e.logical > pos {
-                write_zeros(out, e.logical.min(size) - pos)?; // sparse gap
+                write_zeros(out, e.logical - pos)?; // sparse gap
+                pos = e.logical;
             }
-            let want = e.len.min(size.saturating_sub(e.logical));
-            let mut done = 0u64;
-            while done < want {
-                let chunk = (want - done).min(8 << 20);
-                let nblk = chunk.div_ceil(bs);
+            while pos < ext_end {
+                let off = pos - e.logical;
+                let skip = (off % bs) as usize;
+                let chunk = (ext_end - pos).min(8 << 20);
                 if e.phys == 0 {
                     write_zeros(out, chunk)?;
                 } else {
-                    let p = e.phys + done / bs;
+                    let p = e.phys + off / bs;
+                    let nblk = (skip as u64 + chunk).div_ceil(bs);
                     buf.resize((nblk * bs) as usize, 0);
                     self.store.read_blocks(p, &mut buf)?;
-                    out.write_all(&buf[..chunk as usize])?;
+                    out.write_all(&buf[skip..skip + chunk as usize])?;
                     let (bad, repaired) = self.store.damage_report(p, nblk);
                     rep.repaired_blocks += repaired;
-                    for (s, e2) in bad {
-                        let fs = e.logical + done + (s - p) * bs;
-                        let fe = (e.logical + done + (e2 - p) * bs).min(size);
+                    for (s, x) in bad {
+                        // File byte range of the bad blocks, clipped to what was read.
+                        let fs = (e.logical + (s - e.phys) * bs).max(pos);
+                        let fe = (e.logical + (x - e.phys) * bs).min(pos + chunk);
+                        if fs >= fe {
+                            continue;
+                        }
                         match rep.bad.last_mut() {
                             Some(l) if l.1 == fs => l.1 = fe,
                             _ => rep.bad.push((fs, fe)),
                         }
                     }
                 }
-                done += chunk;
+                pos += chunk;
             }
-            pos = e.logical + want;
         }
-        if pos < size {
-            write_zeros(out, size - pos)?;
+        if pos < end {
+            write_zeros(out, end - pos)?;
         }
         Ok(())
     }
@@ -356,6 +384,20 @@ impl<'a> Fs<'a> {
         Ok(ino.size)
     }
 
+    /// Size of the file contents as a reader sees them (the uncompressed size
+    /// for files that macOS stores compressed).
+    pub fn logical_size(&self, ino: &Inode) -> Result<u64> {
+        if ino.is_compressed()
+            && let Some(d) = self.xattrs(ino.id)?.iter().find(|x| x.name == "com.apple.decmpfs")
+        {
+            let hdr = self.xattr_bytes(d, &mut ReadReport::default())?;
+            if hdr.len() >= 16 {
+                return Ok(le64(&hdr, 8));
+            }
+        }
+        Ok(ino.size)
+    }
+
     pub fn symlink_target(&self, id: u64) -> Result<String> {
         let xs = self.xattrs(id)?;
         let x = xs
@@ -363,6 +405,16 @@ impl<'a> Fs<'a> {
             .find(|x| x.name == "com.apple.fs.symlink")
             .context("symlink without target")?;
         Ok(cstr(&self.xattr_bytes(x, &mut ReadReport::default())?))
+    }
+}
+
+/// Extended attributes that belong to the user (Finder tags, comments...), as
+/// opposed to ones that describe how APFS stores the file.
+pub fn user_xattr(name: &str, compressed: bool) -> bool {
+    match name {
+        "com.apple.decmpfs" | "com.apple.quarantine" => false,
+        "com.apple.ResourceFork" => !compressed, // holds the compressed data
+        n => !n.starts_with("com.apple.fs.") && !n.starts_with("com.apple.system."),
     }
 }
 
@@ -377,6 +429,7 @@ fn parse_inode(id: u64, v: &[u8]) -> Result<Inode> {
         create_time: le64(v, 16),
         mod_time: le64(v, 24),
         access_time: le64(v, 40),
+        change_time: le64(v, 32),
         bsd_flags: le32(v, 68),
         uid: le32(v, 72),
         gid: le32(v, 76),

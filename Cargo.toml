@@ -18,5 +18,7 @@ unicode-normalization = "0.1.26"
 [profile.release]
 strip = true
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(unix)'.dependencies]
 libc = "0.2.191"
+fuser = "0.18.0"
+ctrlc = "3.5.2"
