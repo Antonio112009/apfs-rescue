@@ -12,6 +12,7 @@ mod mount;
 mod nfs_mount;
 mod obj;
 mod platform;
+mod repair;
 mod util;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod view;
@@ -29,7 +30,8 @@ use util::human;
     after_help = "Typical use:\n  \
         apfs-rescue info  ssd.dmg hdd.dmg\n  \
         apfs-rescue ls    ssd.dmg hdd.dmg -p Users\n  \
-        apfs-rescue copy  ssd.dmg hdd.dmg -p Users/NAME/Pictures -o /Volumes/Backup/Pictures\n\n\
+        apfs-rescue copy  ssd.dmg hdd.dmg -p Users/NAME/Pictures -o /Volumes/Backup/Pictures\n  \
+        apfs-rescue repair IMG_1234.mov --bad 4096-8192 -o IMG_1234-fixed.mov\n\n\
         Full guide: docs/GUIDE.md"
 )]
 struct Cli {
@@ -147,6 +149,27 @@ enum Cmd {
         #[arg(long = "at", value_name = "FOLDER")]
         mountpoint: Option<PathBuf>,
     },
+    /// Repair a damaged photo or video that was already copied out. Photos
+    /// need an intact smaller copy of the same picture (--reference); videos
+    /// need the unreadable byte ranges (--bad). Uses ImageMagick for photos and
+    /// FFmpeg for videos. The damaged file is never changed.
+    #[command(after_help = REPAIR_HELP)]
+    Repair {
+        /// The damaged file, as copied by `copy`.
+        file: PathBuf,
+        /// The repaired file to create.
+        #[arg(long, short, value_name = "FILE")]
+        out: PathBuf,
+        /// Photos: an intact smaller copy of the same picture, e.g. the preview
+        /// that a Photos or iPhoto library keeps.
+        #[arg(long, short, value_name = "FILE")]
+        reference: Option<PathBuf>,
+        /// Unreadable byte ranges, as printed by `damaged` or in the copy
+        /// report, e.g. 2404352-2408448,2420736-2424832. Needed for videos;
+        /// for a PNG it marks exactly where the readable part ends.
+        #[arg(long, value_name = "RANGES")]
+        bad: Option<String>,
+    },
     /// Advanced: compare Fusion cache entries with HDD data.
     #[command(hide = true)]
     FusionCheck {
@@ -156,6 +179,12 @@ enum Cmd {
         samples: usize,
     },
 }
+
+const REPAIR_HELP: &str = "Examples:\n  \
+    apfs-rescue repair IMG_1234.JPG --reference IMG_1234-preview.jpeg -o IMG_1234-fixed.jpg\n  \
+    apfs-rescue repair IMG_5678.MOV --bad 91062272-91066368 -o IMG_5678-fixed.mov\n\n\
+    Where to find a reference: in a Photos library, resources/derivatives/<first letter>/<same name>_1_105_c.jpeg;\n\
+    in an iPhoto library, Thumbnails/<same date folders>/<name>_1024.jpg (or Previews/).";
 
 /// Pairs each map with an image: explicit `--map` by file name stem, otherwise
 /// a `.map` file next to the image.
@@ -513,6 +542,14 @@ fn main() -> Result<()> {
                 }
             };
             mount::run(view::View::new(f, id), &mp, &volname)?;
+        }
+        Cmd::Repair {
+            file,
+            out,
+            reference,
+            bad,
+        } => {
+            repair::run(&file, &out, reference.as_deref(), bad.as_deref())?;
         }
         Cmd::FusionCheck { src, samples } => {
             let c = open(&src)?;

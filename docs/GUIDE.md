@@ -14,6 +14,7 @@ Mac that no longer starts. [A Russian version is here](GUIDE.ru.md).
 - [7. Check the copy](#7-check-the-copy)
 - [7a. Older versions and deleted files: snapshots](#7a-older-versions-and-deleted-files-snapshots)
 - [7b. Browse the disk in Finder: `mount`](#7b-browse-the-disk-in-finder-mount)
+- [7c. Repair damaged photos and videos: `repair`](#7c-repair-damaged-photos-and-videos-repair)
 - [8. Photos and iPhoto libraries](#8-photos-and-iphoto-libraries)
 - [9. Error messages](#9-error-messages)
 - [10. Questions](#10-questions)
@@ -213,7 +214,8 @@ not damaged; it adds `intact copy: <path>` to the line. Copy that one instead:
 
 A damaged photo usually still opens, with a grey or broken band. Videos
 usually play with a short glitch. Look for a second copy of such files
-elsewhere (old iPhoto library, phone, cloud).
+elsewhere (old iPhoto library, phone, cloud); if there is none, `repair`
+fixes them (see [7c](#7c-repair-damaged-photos-and-videos-repair)).
 
 ## 6. Copy: `copy`
 
@@ -317,6 +319,54 @@ terminal. To finish, press **Ctrl+C** in the terminal or **Eject** it in Finder.
 On a Mac the mounted disk shows contents, sizes and modification dates.
 Finder tags and creation dates are not shown there (NFS has no place for
 them); `copy` keeps them.
+
+## 7c. Repair damaged photos and videos: `repair`
+
+When a photo or video has no intact copy anywhere, `repair` makes the best
+possible version of it from what was read. It works on the copied file (never
+on the images) and writes a new file next to it; the damaged one is not
+changed.
+
+**Photos** need an *intact smaller copy of the same shot* — a reference.
+Photo libraries keep one for every picture:
+
+- Photos library: `resources/derivatives/<first letter>/<same name>_1_105_c.jpeg`
+  (for `originals/A/ABCD….heic` look for `resources/derivatives/A/ABCD…_1_105_c.jpeg`);
+- iPhoto library: `Thumbnails/<same date folders>/<name>_1024.jpg` or `Previews/`.
+
+```bash
+./apfs-rescue repair IMG_1234.HEIC --reference ABCD_1_105_c.jpeg -o IMG_1234-fixed.jpg
+```
+
+The result is full size. Every pixel that was read correctly stays the
+original's own; only the damaged places come from the reference, scaled up
+(slightly softer there, but without bands or blocks). A JPEG gets special
+care: after a lost piece, the rest of a JPEG is not lost but *shifted* and in
+wrong colours — `repair` puts it back in place and corrects the colour, so it
+stays at full resolution. A PNG is read exactly up to the damage. The program
+prints how much of the picture is the original's own pixels (usually 95–99%).
+The colour profile is kept; with ExifTool installed, date, camera and place are
+copied too. A reference that is cropped, edited or shows another picture is
+refused.
+
+**Videos** need the unreadable byte ranges, as printed by `damaged` (or in the
+copy report):
+
+```bash
+./apfs-rescue repair IMG_5678.MOV --bad 91062272-91066368 -o IMG_5678-fixed.mov
+```
+
+Frames spoiled by the damage (from the damaged frame to the next key frame)
+are removed and the last whole frame holds for that moment — usually a
+fraction of a second — while the sound goes on, instead of a flash of coloured
+blocks. Date, place, rotation and HDR are kept, and the new file is checked to
+play without a single error.
+
+What it needs: [ImageMagick 7](https://imagemagick.org) for photos and
+[FFmpeg](https://ffmpeg.org) for videos (`brew install imagemagick ffmpeg
+exiftool` on a Mac). If a video's damage is in its index rather than in the
+picture, `repair` says so; such a file needs its structure rebuilt by other
+tools.
 
 ## 8. Photos and iPhoto libraries
 
