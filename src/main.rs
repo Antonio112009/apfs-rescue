@@ -128,6 +128,10 @@ enum Cmd {
         /// Folder inside the volume (default: whole volume).
         #[arg(long, short, default_value = "")]
         path: String,
+        /// Also look across the whole volume for intact copies of each
+        /// damaged file (same contents stored elsewhere). Takes a few minutes.
+        #[arg(long)]
+        find_copies: bool,
     },
     /// Show the volume (or one folder) as a read-only disk you can browse in
     /// Finder or a file manager. Built in on a Mac; needs fuse3 on Linux.
@@ -373,6 +377,27 @@ fn main() -> Result<()> {
                 threads,
                 xattrs: !no_xattrs,
             };
+            let ino = f.inode(id)?;
+            if !ino.is_dir() {
+                // A single file: put it into the output folder under its own name.
+                let name = path
+                    .rsplit('/')
+                    .find(|s| !s.is_empty())
+                    .context("give the file's path with -p")?;
+                std::fs::create_dir_all(&out)?;
+                let dst = out.join(platform::portable_name(name).0);
+                let rep = extract::copy_one(&f, &ino, &dst, opts.xattrs)?;
+                if rep.bad.is_empty() {
+                    println!("Done: {} copied fine.", dst.display());
+                } else {
+                    println!(
+                        "Done: {} copied, but these byte ranges were unreadable and are zeros: {}",
+                        dst.display(),
+                        extract::fmt_ranges(&rep.bad)
+                    );
+                }
+                return Ok(());
+            }
             let s = extract::extract(&f, id, &out, &opts)?;
             println!(
                 "Done: {} copied fine, {} damaged, {} errors, {} already there. {} written.",
@@ -426,7 +451,7 @@ fn main() -> Result<()> {
             }
             println!("{:>10}  {:>9} files  (total)", human(tb), tf);
         }
-        Cmd::Damaged { src, path } => {
+        Cmd::Damaged { src, path, find_copies } => {
             let c = open(&src)?;
             if c.store.damage.ranges.is_empty() {
                 bail!("no ddrescue map found; put hdd.map next to hdd.dmg or pass --map FILE");
@@ -434,14 +459,31 @@ fn main() -> Result<()> {
             let f = open_fs(&c, &src)?;
             let id = f.lookup(&path)?;
             let hits = extract::scan_damage(&f, id)?;
+            let copies = if find_copies {
+                extract::find_copies(&f, &hits)?
+            } else {
+                vec![None; hits.len()]
+            };
             let mut damaged = 0;
-            for (rel, size, rep) in &hits {
+            let mut with_copy = 0;
+            for ((rel, ino, rep), copy) in hits.iter().zip(&copies) {
+                let size = ino.size;
                 if rep.bad.is_empty() {
                     println!("REPAIRED\t{rel}\t{size}\t{} blocks from SSD cache", rep.repaired_blocks);
                 } else {
                     damaged += 1;
-                    println!("DAMAGED\t{rel}\t{size}\t{}", extract::fmt_ranges(&rep.bad));
+                    let copy = match copy {
+                        Some(c) => {
+                            with_copy += 1;
+                            format!("\tintact copy: {c}")
+                        }
+                        None => String::new(),
+                    };
+                    println!("DAMAGED\t{rel}\t{size}\t{}{copy}", extract::fmt_ranges(&rep.bad));
                 }
+            }
+            if find_copies {
+                eprintln!("{with_copy} of {damaged} damaged files have an intact copy elsewhere on the volume");
             }
             eprintln!(
                 "{damaged} damaged files, {} repaired from the Fusion SSD cache",

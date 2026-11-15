@@ -317,6 +317,15 @@ pub fn extract(fs: &Fs, start: u64, out: &Path, opts: &CopyOptions) -> Result<Su
     Ok(s)
 }
 
+/// Copies one regular file to `dst` (always rewritten) and returns what was damaged.
+pub fn copy_one(fs: &Fs, ino: &Inode, dst: &Path, xattrs: bool) -> Result<ReadReport> {
+    let _ = fs::remove_file(dst);
+    match copy_file(fs, ino, dst, xattrs && platform::MAC_METADATA)? {
+        CopyResult::Copied(_, rep, _) => Ok(rep),
+        CopyResult::Skipped => Ok(ReadReport::default()),
+    }
+}
+
 enum CopyResult {
     Skipped,
     /// Bytes written, damage found, notes about metadata that was not restored.
@@ -354,7 +363,7 @@ fn copy_file(fs: &Fs, ino: &Inode, dst: &Path, xattrs: bool) -> Result<CopyResul
 }
 
 /// Finds files whose data overlaps unreadable areas, without copying anything.
-pub fn scan_damage(fs: &Fs, start: u64) -> Result<Vec<(String, u64, ReadReport)>> {
+pub fn scan_damage(fs: &Fs, start: u64) -> Result<Vec<(String, Inode, ReadReport)>> {
     let w = walk(fs, start)?;
     let bs = fs.store.bs;
     let mut out = Vec::new();
@@ -392,7 +401,7 @@ pub fn scan_damage(fs: &Fs, start: u64) -> Result<Vec<(String, u64, ReadReport)>
             }
         }
         if !rep.bad.is_empty() || rep.repaired_blocks > 0 {
-            out.push((job.rel.clone(), job.ino.size, rep));
+            out.push((job.rel.clone(), job.ino.clone(), rep));
         }
     }
     Ok(out)
@@ -414,4 +423,83 @@ pub fn fmt_time(ns: u64) -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     format!("{y:04}-{m:02}-{d:02} {:02}:{:02}", sod / 3600, sod % 3600 / 60)
+}
+
+/// True when `a` and `b` hold the same bytes everywhere except inside the
+/// `[start, end)` ranges listed in `skip`.
+fn same_outside(a: &[u8], b: &[u8], skip: &[(u64, u64)]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut pos = 0usize;
+    for &(s, e) in skip {
+        let s = (s as usize).min(a.len());
+        if a[pos..s] != b[pos..s] {
+            return false;
+        }
+        pos = pos.max((e as usize).min(a.len()));
+    }
+    a[pos..] == b[pos..]
+}
+
+/// For each damaged file, looks across the whole volume for an intact copy:
+/// a different file of the same size that has no unreadable parts itself and
+/// matches every byte that could be read. Returns its path, if found.
+///
+/// Photos are often stored twice (an iPhoto and a Photos library, a folder of
+/// exports); a copy that lives in other disk blocks restores the file exactly.
+pub fn find_copies(fs: &Fs, hits: &[(String, Inode, ReadReport)]) -> Result<Vec<Option<String>>> {
+    eprintln!("Listing the whole volume to look for intact copies...");
+    let all = walk(fs, crate::fs::ROOT_DIR_INO)?;
+    let mut by_size: std::collections::HashMap<u64, Vec<&FileJob>> = std::collections::HashMap::new();
+    for job in &all.files {
+        if job.ino.size > 0 {
+            by_size.entry(job.ino.size).or_default().push(job);
+        }
+    }
+    let mut out = Vec::with_capacity(hits.len());
+    for (rel, ino, rep) in hits {
+        let candidates: Vec<&&FileJob> = by_size
+            .get(&ino.size)
+            .map(|v| v.iter().filter(|j| j.ino.id != ino.id).collect())
+            .unwrap_or_default();
+        if rep.bad.is_empty() || candidates.is_empty() {
+            out.push(None);
+            continue;
+        }
+        let mut a = Vec::new();
+        if fs.read_file(ino, &mut a, &mut ReadReport::default()).is_err() {
+            out.push(None);
+            continue;
+        }
+        let mut found = None;
+        for c in candidates {
+            let mut b = Vec::new();
+            let mut rb = ReadReport::default();
+            if fs.read_file(&c.ino, &mut b, &mut rb).is_ok() && rb.bad.is_empty() && same_outside(&a, &b, &rep.bad) {
+                found = Some(c.rel.clone());
+                break;
+            }
+        }
+        if found.is_some() {
+            eprintln!("  intact copy found for {rel}");
+        }
+        out.push(found);
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::same_outside;
+
+    #[test]
+    fn compares_only_readable_parts() {
+        let a = b"abc\0\0\0ghi";
+        let b = b"abcDEFghi";
+        assert!(same_outside(a, b, &[(3, 6)]));
+        assert!(!same_outside(a, b, &[]));
+        assert!(!same_outside(b"abcDEFghX", b, &[(3, 6)]));
+        assert!(!same_outside(b"short", b, &[(3, 6)]));
+    }
 }
