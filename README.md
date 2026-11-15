@@ -62,6 +62,7 @@ apfs-rescue mount   ssd.img hdd.img                      # browse it in Finder, 
 | `damaged` | Lists files whose data lies in unreadable areas (needs a ddrescue map); `--find-copies` looks for intact duplicates |
 | `copy`    | Copies a folder, with everything in it, to another disk |
 | `mount`   | Shows the volume (or one folder) as a read-only disk in Finder or a file manager |
+| `repair`  | Repairs a damaged photo (with an intact preview of it) or video (frames spoiled by the damage are removed) |
 
 Add `-s NUMBER` (a snapshot from `info`) to `ls`, `copy`, `damaged` or `mount`
 to see the disk as it was at that moment. Run `apfs-rescue help <command>` for
@@ -105,6 +106,10 @@ The program is written to `target/release/apfs-rescue`.
 - 🔍 **Finds intact copies.** `damaged --find-copies` looks across the whole disk
   for an undamaged file with the same contents (photos are often stored twice)
   so a damaged file can be restored exactly.
+- 🩹 **Repairs photos and videos.** `repair` rebuilds a damaged photo at full
+  size from what was read plus the library's intact preview — in a JPEG it
+  puts the shifted rest of the picture back in place — and removes the frames
+  a damaged video cannot show (uses ImageMagick and FFmpeg).
 - 🔒 **Safe.** Images are opened read-only; output onto the disk holding the
   images is refused.
 - ⏯️ **Resumable.** Run the same `copy` again after an interruption; finished
