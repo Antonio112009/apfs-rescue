@@ -199,6 +199,18 @@ for files with data in unreadable areas, or `REPAIRED` for files whose bad
 blocks were recovered from the Fusion SSD cache. Open the file in a
 spreadsheet program to sort it.
 
+**Look for intact copies.** Photos often exist twice (an old iPhoto library
+and a Photos library, a camera folder and an export). Add `--find-copies` and
+apfs-rescue checks the whole volume for a file with the same contents that is
+not damaged; it adds `intact copy: <path>` to the line. Copy that one instead:
+
+```bash
+./apfs-rescue damaged ssd.img hdd.img -p Users/NAME --find-copies > damaged.tsv
+./apfs-rescue copy ssd.img hdd.img -p "Users/NAME/path/of/the/intact/copy.jpg" -o ~/Restored
+```
+
+`copy -p` accepts a single file as well as a folder.
+
 A damaged photo usually still opens, with a grey or broken band. Videos
 usually play with a short glitch. Look for a second copy of such files
 elsewhere (old iPhoto library, phone, cloud).

@@ -41,6 +41,9 @@ To build from source: install [Rust](https://rustup.rs) and run
 - **Honest about damage.** Reads GNU ddrescue maps and reports, per file, the
   byte ranges that came from unreadable sectors, instead of copying zeros
   silently.
+- **Finds intact copies.** `damaged --find-copies` looks across the whole disk
+  for an undamaged file with the same contents (photos are often stored twice)
+  so a damaged file can be restored exactly.
 - **Safe.** Images are opened read-only; output onto the disk holding the
   images is refused.
 - **Resumable.** Run the same `copy` again after an interruption; finished

@@ -6,6 +6,14 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `damaged --find-copies` looks across the whole volume for an intact copy of
+  each damaged file (same size, no unreadable parts, identical in every byte
+  that could be read). On the test disk it found copies for 38 of 147 damaged
+  files in under a minute.
+- `copy -p` also accepts a single file.
+
 ## [0.2.0] - 2026-11-14
 
 First published release.
